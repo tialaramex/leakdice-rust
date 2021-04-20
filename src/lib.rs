@@ -50,6 +50,20 @@ fn arg_to_int<F>(s: Option<OsString>) -> Result<Option<F>> where
     Ok(Some(num))
 }
 
+
+use std::fs::File;
+
+pub fn doit(settings: Settings) {
+    let procfile = format!("/proc/{}/mem", settings.pid.expect("Shouldn't call this without setting pid"));
+
+    println!("procfile={}", procfile);
+
+    let fd = File::open(procfile).unwrap();
+
+    fd.sync_all().unwrap();
+}
+
+#[cfg(test)]
 #[test]
 fn ati_none() {
     let result = arg_to_int::<u32>(None);
