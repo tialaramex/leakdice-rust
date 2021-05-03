@@ -1,6 +1,5 @@
 use std::env;
 use std::ffi::OsString;
-use std::str::FromStr;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -8,8 +7,8 @@ use anyhow::Result;
 #[derive(Debug,PartialEq,Eq)]
 pub struct Settings {
     pub name: String,
-    pub pid: Option<u32>,
-    pub addr: Option<u64>,
+    pub pid: Option<i32>,
+    pub addr: Option<usize>,
 }
 
 pub fn read_args() -> Result<Settings> {
@@ -23,15 +22,34 @@ fn read_args_internal<A>(mut args: A) -> Result<Settings> where
         None => "Unknown".to_string(),
     };
 
-    let pid = arg_to_int::<u32>(args.next())?;
+    let pid = pid_from_dec(args.next())?;
 
-    let addr = arg_to_int::<u64>(args.next())?;
+    let addr = addr_from_hex(args.next())?;
+    /* Fix up to align one page */
 
     Ok(Settings { name, pid, addr })
 }
 
-fn arg_to_int<F>(s: Option<OsString>) -> Result<Option<F>> where
-    F: FromStr, <F as FromStr>::Err: std::error::Error, <F as FromStr>::Err: Send, <F as FromStr>::Err: Sync, <F as FromStr>::Err: 'static {
+fn pid_from_dec(s: Option<OsString>) -> Result<Option<i32>> {
+    let arg = match s {
+        None => return Ok(None),
+        Some(s) => s,
+    };
+
+    let z = arg.into_string();
+
+    let arg = match z {
+        Ok(s) => s,
+        Err(_) => return Err(anyhow!("Ugh")),
+    };
+
+    match arg.parse::<i32>() {
+        Ok(num) => Ok(Some(num)),
+        Err(_) => Err(anyhow!("Ppfffffft")),
+    }
+}
+
+fn addr_from_hex(s: Option<OsString>) -> Result<Option<usize>> {
 
     let arg = match s {
         None => return Ok(None),
@@ -45,28 +63,85 @@ fn arg_to_int<F>(s: Option<OsString>) -> Result<Option<F>> where
         Err(_) => return Err(anyhow!("Ugh")),
     };
 
-    let num = arg.parse::<F>()?;
+    match usize::from_str_radix(&arg, 16) {
+        Ok(num) => Ok(Some(num)),
+        Err(_) => Err(anyhow!("Fffft")),
+    }
+}
 
-    Ok(Some(num))
+use std::fs::OpenOptions;
+use std::io::ErrorKind;
+
+const PAGE_SIZE: usize = 4096;
+
+pub fn doit(settings: Settings) -> Result<()> {
+    let pid = settings.pid.expect("Shouldn't call this without setting pid");
+
+    let addr = match settings.addr {
+        Some(addr) => addr,
+        None => pick_offset(settings)?,
+    };
+
+    let procfile = format!("/proc/{}/mem", pid);
+
+    let mut fd: std::fs::File = match OpenOptions::new().read(true).open(&procfile) {
+        Ok(fd) => fd,
+        Err(x) => return match x.kind() {
+            ErrorKind::NotFound => Err(anyhow!("Non-existent process, pick a process which actually exists")),
+            ErrorKind::PermissionDenied => Err(anyhow!("Permission denied, pick a process owned by this user")),
+            _ => Err(anyhow!(x)),
+        }
+    };
+
+    use std::convert::TryInto;
+    let offset: u64 = addr.try_into().unwrap();
+    use std::io::Seek;
+    let pos = fd.seek(std::io::SeekFrom::Start(offset))?;
+    if pos != offset {
+        return Err(anyhow!("Somehow unable to seek to {:08x} in {}", offset, procfile));
+    }
+
+    let mut buffer = [0; PAGE_SIZE];
+    use std::io::Read;
+    let read = fd.read(&mut buffer[..])?;
+    if read != PAGE_SIZE {
+        return Err(anyhow!("Somehow only able to read {} bytes from {}", read, procfile));
+    }
+
+    ascii_hex(addr, &buffer)
+}
+
+const ADDR_BYTES: usize = std::mem::size_of::<usize>();
+
+const LINE_SIZE: usize = 16;
+
+fn ascii_hex(addr: usize, buffer: &[u8]) -> Result<()> {
+
+    for line in 0..(PAGE_SIZE/LINE_SIZE) {
+        let offset = line * LINE_SIZE;
+        let slice = &buffer[offset..(offset+LINE_SIZE)];
+        ascii_row(addr+offset, slice)?;
+    }
+    Ok(())
+}
+
+fn ascii_row(addr: usize, buffer: &[u8]) -> Result<()> {
+    println!("{addr:0size$x} they are {buffer:02x?}", size= ADDR_BYTES, addr= addr, buffer= buffer);
+
+    Ok(())
 }
 
 
-use std::fs::File;
-
-pub fn doit(settings: Settings) {
-    let procfile = format!("/proc/{}/mem", settings.pid.expect("Shouldn't call this without setting pid"));
-
-    println!("procfile={}", procfile);
-
-    let fd = File::open(procfile).unwrap();
-
-    fd.sync_all().unwrap();
+fn pick_offset(settings: Settings) -> Result<usize> {
+    /* Read maps etc. */
+    todo!();
 }
+
 
 #[cfg(test)]
 #[test]
-fn ati_none() {
-    let result = arg_to_int::<u32>(None);
+fn pfd_none() {
+    let result = pid_from_dec(None);
     let inner = result.expect("tried to parse empty argument");
 
     assert_eq!(inner, None);
@@ -74,21 +149,48 @@ fn ati_none() {
 
 #[test]
 #[should_panic(expected = "Not a number")]
-fn ati_space() {
+fn pfd_space() {
     let space = Some(OsString::from(" "));
 
-    let result = arg_to_int::<u32>(space);
+    let result = pid_from_dec(space);
     let _ = result.expect("Not a number");
 }
 
 #[test]
-fn ati_five() {
+fn pfd_five() {
     let five = Some(OsString::from("5"));
 
-    let result = arg_to_int::<u32>(five);
+    let result = pid_from_dec(five);
     let inner = result.expect("unable to parse five");
 
     assert_eq!(inner, Some(5));
+}
+
+#[test]
+fn afh_none() {
+    let result = addr_from_hex(None);
+    let inner = result.expect("tried to parse empty argument");
+
+    assert_eq!(inner, None);
+}
+
+#[test]
+#[should_panic(expected = "Not a number")]
+fn afh_space() {
+    let space = Some(OsString::from(" "));
+
+    let result = addr_from_hex(space);
+    let _ = result.expect("Not a number");
+}
+
+#[test]
+fn afh_fives() {
+    let fives = Some(OsString::from("55555555"));
+
+    let result = addr_from_hex(fives);
+    let inner = result.expect("unable to parse fives");
+
+    assert_eq!(inner, Some(0x55555555));
 }
 
 
@@ -103,15 +205,29 @@ fn rai_empty() {
     assert_eq!(result, empty);
 }
 
-
 #[test]
-fn rai_example() {
+fn rai_example1() {
     let name = "program_name".to_string();
     let expected = Settings { name, pid: Some(1234), addr: None };
     let mut example: Vec<OsString> = Vec::new();
 
     example.push(OsString::from("program_name"));
     example.push(OsString::from("1234"));
+
+    let result = read_args_internal(example.iter().cloned()).unwrap();
+
+    assert_eq!(result, expected);
+}
+
+#[test]
+fn rai_example2() {
+    let name = "program_name".to_string();
+    let expected = Settings { name, pid: Some(5678), addr: Some(0xdeadbeef) };
+    let mut example: Vec<OsString> = Vec::new();
+
+    example.push(OsString::from("program_name"));
+    example.push(OsString::from("5678"));
+    example.push(OsString::from("DEADBEEF"));
 
     let result = read_args_internal(example.iter().cloned()).unwrap();
 

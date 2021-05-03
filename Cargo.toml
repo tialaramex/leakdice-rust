@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0"
+nix = "0.20.0"

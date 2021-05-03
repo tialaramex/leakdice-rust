@@ -13,6 +13,9 @@ fn main() {
         process::exit(0);
     };
 
-    doit(settings);
+    match doit(settings) {
+        Err(x) => eprintln!("Trouble: {}", x),
+        _ => (),
+    }
 }
 
