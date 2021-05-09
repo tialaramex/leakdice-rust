@@ -115,7 +115,7 @@ pub fn doit(settings: Settings) -> Result<()> {
 const ADDR_BYTES: usize = std::mem::size_of::<usize>();
 const LINE_SIZE: usize = 16;
 
-fn ascii_hex<W>(mut out: W, addr: usize, buffer: &[u8]) -> Result<()> where
+fn ascii_hex<W>(mut out: W, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<()> where
     W: std::io::Write {
 
     use std::borrow::BorrowMut;
@@ -145,14 +145,67 @@ fn ascii_row<W>(mut out: W, addr: usize, buffer: &[u8]) -> Result<()> where
     Ok(())
 }
 
-
 fn pick_offset(settings: Settings) -> Result<usize> {
     /* Read maps etc. */
     todo!();
 }
 
-
 #[cfg(test)]
+#[test]
+fn ar_zero() {
+    let row: [u8; LINE_SIZE] = [0; LINE_SIZE];
+
+    use std::io;
+    let result = ascii_row(io::sink(), 0x12345678, &row);
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn ar_easy() {
+    let row: [u8; LINE_SIZE] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
+    use std::io;
+    let result = ascii_row(io::sink(), 0x12345678, &row);
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn ar_letters() {
+    let row: [u8; LINE_SIZE] = [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79];
+
+    use std::io;
+    let result = ascii_row(io::sink(), 0x12345678, &row);
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn ah_zero() {
+    let page: [u8; PAGE_SIZE] = [0; PAGE_SIZE];
+
+    use std::io;
+    let result = ascii_hex(io::sink(), 0x12345678, &page);
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn ah_ascending() {
+    let mut page: [u8; PAGE_SIZE] = [0; PAGE_SIZE];
+
+
+    for n in 0..PAGE_SIZE {
+        page[n] = n as u8;
+    }
+
+    use std::io;
+    let result = ascii_hex(io::sink(), 0x12345678, &page);
+
+    assert!(result.is_ok());
+}
+
 #[test]
 fn pfd_none() {
     let result = pid_from_dec(None);
