@@ -108,25 +108,39 @@ pub fn doit(settings: Settings) -> Result<()> {
         return Err(anyhow!("Somehow only able to read {} bytes from {}", read, procfile));
     }
 
-    ascii_hex(addr, &buffer)
+    use std::io;
+    ascii_hex(io::stdout(), addr, &buffer)
 }
 
 const ADDR_BYTES: usize = std::mem::size_of::<usize>();
-
 const LINE_SIZE: usize = 16;
 
-fn ascii_hex(addr: usize, buffer: &[u8]) -> Result<()> {
+fn ascii_hex<W>(mut out: W, addr: usize, buffer: &[u8]) -> Result<()> where
+    W: std::io::Write {
 
+    use std::borrow::BorrowMut;
+
+    let mut old_slice = &buffer[..0];
+    let mut repeat = false;
     for line in 0..(PAGE_SIZE/LINE_SIZE) {
         let offset = line * LINE_SIZE;
         let slice = &buffer[offset..(offset+LINE_SIZE)];
-        ascii_row(addr+offset, slice)?;
+        if slice != old_slice {
+            ascii_row(out.borrow_mut(), addr+offset, slice)?;
+            repeat = false;
+        } else if !repeat {
+            write!(out, " ...\n")?;
+            repeat = true;
+        }
+        old_slice = slice;
     }
     Ok(())
 }
 
-fn ascii_row(addr: usize, buffer: &[u8]) -> Result<()> {
-    println!("{addr:0size$x} they are {buffer:02x?}", size= ADDR_BYTES, addr= addr, buffer= buffer);
+fn ascii_row<W>(mut out: W, addr: usize, buffer: &[u8]) -> Result<()> where
+    W: std::io::Write {
+
+    write!(out, "{addr:0size$x} they are {buffer:02x?}\n", size= ADDR_BYTES, addr= addr, buffer= buffer)?;
 
     Ok(())
 }
