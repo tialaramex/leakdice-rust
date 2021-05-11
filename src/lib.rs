@@ -140,7 +140,18 @@ fn ascii_hex<W>(mut out: W, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<()>
 fn ascii_row<W>(mut out: W, addr: usize, buffer: &[u8]) -> Result<()> where
     W: std::io::Write {
 
-    write!(out, "{addr:0size$x} they are {buffer:02x?}\n", size= ADDR_BYTES, addr= addr, buffer= buffer)?;
+    write!(out, "{addr:0size$x} ", size= ADDR_BYTES, addr= addr)?;
+    for byte in buffer {
+        if *byte > 31 && *byte < 127 {
+            write!(out, "{}", (*byte as char))?;
+        } else {
+            write!(out, ".")?;
+        }
+    }
+    for byte in buffer {
+        write!(out, " {:02x}", byte)?;
+    }
+    write!(out, "\n")?;
 
     Ok(())
 }
