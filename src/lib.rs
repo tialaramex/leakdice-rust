@@ -140,7 +140,7 @@ fn ascii_hex<W>(mut out: W, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<()>
 fn ascii_row<W>(mut out: W, addr: usize, buffer: &[u8]) -> Result<()> where
     W: std::io::Write {
 
-    write!(out, "{addr:0size$x} ", size= ADDR_BYTES, addr= addr)?;
+    write!(out, "{addr:0size$x} ", size= ADDR_BYTES * 2, addr= addr)?;
     for byte in buffer {
         if *byte > 31 && *byte < 127 {
             write!(out, "{}", (*byte as char))?;
@@ -157,8 +157,46 @@ fn ascii_row<W>(mut out: W, addr: usize, buffer: &[u8]) -> Result<()> where
 }
 
 fn pick_offset(settings: Settings) -> Result<usize> {
-    /* Read maps etc. */
-    todo!();
+    let pid = settings.pid.expect("Shouldn't call this without setting pid");
+
+    let procfile = format!("/proc/{}/maps", pid);
+
+    let fd: std::fs::File = match OpenOptions::new().read(true).open(&procfile) {
+        Ok(fd) => fd,
+        Err(x) => return match x.kind() {
+            ErrorKind::NotFound => Err(anyhow!("Non-existent process, pick a process which actually exists")),
+            ErrorKind::PermissionDenied => Err(anyhow!("Permission denied, pick a process owned by this user")),
+            _ => Err(anyhow!(x)),
+        }
+    };
+
+    use std::io::{self, BufRead};
+
+    let lines = io::BufReader::new(fd).lines();
+
+    use regex::Regex;
+
+    let re = Regex::new("^([[:xdigit:]]+)-([[:xdigit:]]+) (.{4})").expect("Memory-map matching regular expression should compile");
+
+    for line in lines {
+        if let Ok(line) = line {
+            let cap = re.captures(&line).expect("Incompatible layout of /proc/pid/maps");
+            if let Some(perms) = cap.get(3) {
+                let start = cap.get(1).unwrap();
+                let end = cap.get(2).unwrap();
+
+                let perms = perms.as_str();
+                let start = usize::from_str_radix(start.as_str(), 16)?;
+                let end = usize::from_str_radix(end.as_str(), 16)?;
+                if perms == "rw-p" {
+                    println!("{:0size$x}-{:0size$x} {}", start, end, perms, size= ADDR_BYTES * 2);
+                    return Ok(start)
+                }
+            }
+        }
+    }
+
+    Err(anyhow!("Process appears to have no heap"))
 }
 
 #[cfg(test)]
