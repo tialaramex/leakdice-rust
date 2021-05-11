@@ -27,7 +27,6 @@ where
     let pid = pid_from_dec(args.next())?;
 
     let addr = addr_from_hex(args.next())?;
-    /* Fix up to align one page */
 
     Ok(Settings { name, pid, addr })
 }
@@ -84,6 +83,9 @@ pub fn doit(settings: Settings) -> Result<()> {
         Some(addr) => addr,
         None => pick_offset(settings)?,
     };
+
+    /* Fix up addr to align one page */
+    let addr = addr & (usize::MAX - (PAGE_SIZE - 1));
 
     let procfile = format!("/proc/{}/mem", pid);
 
@@ -198,13 +200,70 @@ fn pick_offset(settings: Settings) -> Result<usize> {
     };
 
     use std::io::{self, BufRead};
+    pick_offset_from_map(io::BufReader::new(fd).lines())
+}
 
-    let lines = io::BufReader::new(fd).lines();
+fn pick_offset_from_map<L>(lines: L) -> Result<usize>
+where
+    L: Iterator<Item = std::io::Result<String>>,
+{
+    let mem = memory_map(lines)?;
+    let pages: usize = mem
+        .iter()
+        .filter(|m| m.perms == "rw-p")
+        .map(|m| m.pages)
+        .sum();
+    if pages == 0 {
+        return Err(anyhow!("Process appears to have no heap"));
+    }
 
+    use rand::{thread_rng, Rng};
+
+    let mut rng = thread_rng();
+    let mut page: usize = rng.gen_range(0..=pages) - 1;
+
+    let heap = mem.iter().filter(|m| m.perms == "rw-p");
+
+    for range in heap {
+        if range.pages <= page {
+            page -= range.pages;
+        } else {
+            return Ok(range.start + (PAGE_SIZE * page));
+        }
+    }
+
+    panic!("Somehow there were fewer pages that we calculated!");
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Memory {
+    pub start: usize,
+    pub pages: usize,
+    pub perms: String,
+}
+
+impl Memory {
+    fn new(start: usize, end: usize, perms: &str) -> Memory {
+        let perms = String::from(perms);
+        let pages = (end - start) / PAGE_SIZE;
+
+        Memory {
+            start,
+            pages,
+            perms,
+        }
+    }
+}
+
+fn memory_map<L>(lines: L) -> Result<Vec<Memory>>
+where
+    L: Iterator<Item = std::io::Result<String>>,
+{
     use regex::Regex;
-
     let re = Regex::new("^([[:xdigit:]]+)-([[:xdigit:]]+) (.{4})")
         .expect("Memory-map matching regular expression should compile");
+
+    let mut vec = Vec::new();
 
     for line in lines {
         if let Ok(line) = line {
@@ -218,21 +277,14 @@ fn pick_offset(settings: Settings) -> Result<usize> {
                 let perms = perms.as_str();
                 let start = usize::from_str_radix(start.as_str(), 16)?;
                 let end = usize::from_str_radix(end.as_str(), 16)?;
-                if perms == "rw-p" {
-                    println!(
-                        "{:0size$x}-{:0size$x} {}",
-                        start,
-                        end,
-                        perms,
-                        size = ADDR_BYTES * 2
-                    );
-                    return Ok(start);
-                }
+                vec.push(Memory::new(start, end, perms));
             }
+        } else {
+            return Err(anyhow!("Trouble reading /proc/pid/maps"));
         }
     }
 
-    Err(anyhow!("Process appears to have no heap"))
+    Ok(vec)
 }
 
 #[cfg(test)]
