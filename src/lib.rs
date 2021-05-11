@@ -4,7 +4,7 @@ use std::ffi::OsString;
 use anyhow::anyhow;
 use anyhow::Result;
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Settings {
     pub name: String,
     pub pid: Option<i32>,
@@ -15,8 +15,10 @@ pub fn read_args() -> Result<Settings> {
     read_args_internal(env::args_os())
 }
 
-fn read_args_internal<A>(mut args: A) -> Result<Settings> where
-    A: Iterator<Item = OsString> {
+fn read_args_internal<A>(mut args: A) -> Result<Settings>
+where
+    A: Iterator<Item = OsString>,
+{
     let name = match args.next() {
         Some(name) => name.into_string().unwrap(),
         None => "Unknown".to_string(),
@@ -50,7 +52,6 @@ fn pid_from_dec(s: Option<OsString>) -> Result<Option<i32>> {
 }
 
 fn addr_from_hex(s: Option<OsString>) -> Result<Option<usize>> {
-
     let arg = match s {
         None => return Ok(None),
         Some(s) => s,
@@ -75,7 +76,9 @@ use std::io::ErrorKind;
 const PAGE_SIZE: usize = 4096;
 
 pub fn doit(settings: Settings) -> Result<()> {
-    let pid = settings.pid.expect("Shouldn't call this without setting pid");
+    let pid = settings
+        .pid
+        .expect("Shouldn't call this without setting pid");
 
     let addr = match settings.addr {
         Some(addr) => addr,
@@ -86,10 +89,16 @@ pub fn doit(settings: Settings) -> Result<()> {
 
     let mut fd: std::fs::File = match OpenOptions::new().read(true).open(&procfile) {
         Ok(fd) => fd,
-        Err(x) => return match x.kind() {
-            ErrorKind::NotFound => Err(anyhow!("Non-existent process, pick a process which actually exists")),
-            ErrorKind::PermissionDenied => Err(anyhow!("Permission denied, pick a process owned by this user")),
-            _ => Err(anyhow!(x)),
+        Err(x) => {
+            return match x.kind() {
+                ErrorKind::NotFound => Err(anyhow!(
+                    "Non-existent process, pick a process which actually exists"
+                )),
+                ErrorKind::PermissionDenied => Err(anyhow!(
+                    "Permission denied, pick a process owned by this user"
+                )),
+                _ => Err(anyhow!(x)),
+            }
         }
     };
 
@@ -98,14 +107,22 @@ pub fn doit(settings: Settings) -> Result<()> {
     use std::io::Seek;
     let pos = fd.seek(std::io::SeekFrom::Start(offset))?;
     if pos != offset {
-        return Err(anyhow!("Somehow unable to seek to {:08x} in {}", offset, procfile));
+        return Err(anyhow!(
+            "Somehow unable to seek to {:08x} in {}",
+            offset,
+            procfile
+        ));
     }
 
     let mut buffer = [0; PAGE_SIZE];
     use std::io::Read;
     let read = fd.read(&mut buffer[..])?;
     if read != PAGE_SIZE {
-        return Err(anyhow!("Somehow only able to read {} bytes from {}", read, procfile));
+        return Err(anyhow!(
+            "Somehow only able to read {} bytes from {}",
+            read,
+            procfile
+        ));
     }
 
     use std::io;
@@ -115,18 +132,19 @@ pub fn doit(settings: Settings) -> Result<()> {
 const ADDR_BYTES: usize = std::mem::size_of::<usize>();
 const LINE_SIZE: usize = 16;
 
-fn ascii_hex<W>(mut out: W, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<()> where
-    W: std::io::Write {
-
+fn ascii_hex<W>(mut out: W, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<()>
+where
+    W: std::io::Write,
+{
     use std::borrow::BorrowMut;
 
     let mut old_slice = &buffer[..0];
     let mut repeat = false;
-    for line in 0..(PAGE_SIZE/LINE_SIZE) {
+    for line in 0..(PAGE_SIZE / LINE_SIZE) {
         let offset = line * LINE_SIZE;
-        let slice = &buffer[offset..(offset+LINE_SIZE)];
+        let slice = &buffer[offset..(offset + LINE_SIZE)];
         if slice != old_slice {
-            ascii_row(out.borrow_mut(), addr+offset, slice)?;
+            ascii_row(out.borrow_mut(), addr + offset, slice)?;
             repeat = false;
         } else if !repeat {
             write!(out, " ...\n")?;
@@ -137,10 +155,11 @@ fn ascii_hex<W>(mut out: W, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<()>
     Ok(())
 }
 
-fn ascii_row<W>(mut out: W, addr: usize, buffer: &[u8]) -> Result<()> where
-    W: std::io::Write {
-
-    write!(out, "{addr:0size$x} ", size= ADDR_BYTES * 2, addr= addr)?;
+fn ascii_row<W>(mut out: W, addr: usize, buffer: &[u8]) -> Result<()>
+where
+    W: std::io::Write,
+{
+    write!(out, "{addr:0size$x} ", size = ADDR_BYTES * 2, addr = addr)?;
     for byte in buffer {
         if *byte > 31 && *byte < 127 {
             write!(out, "{}", (*byte as char))?;
@@ -157,16 +176,24 @@ fn ascii_row<W>(mut out: W, addr: usize, buffer: &[u8]) -> Result<()> where
 }
 
 fn pick_offset(settings: Settings) -> Result<usize> {
-    let pid = settings.pid.expect("Shouldn't call this without setting pid");
+    let pid = settings
+        .pid
+        .expect("Shouldn't call this without setting pid");
 
     let procfile = format!("/proc/{}/maps", pid);
 
     let fd: std::fs::File = match OpenOptions::new().read(true).open(&procfile) {
         Ok(fd) => fd,
-        Err(x) => return match x.kind() {
-            ErrorKind::NotFound => Err(anyhow!("Non-existent process, pick a process which actually exists")),
-            ErrorKind::PermissionDenied => Err(anyhow!("Permission denied, pick a process owned by this user")),
-            _ => Err(anyhow!(x)),
+        Err(x) => {
+            return match x.kind() {
+                ErrorKind::NotFound => Err(anyhow!(
+                    "Non-existent process, pick a process which actually exists"
+                )),
+                ErrorKind::PermissionDenied => Err(anyhow!(
+                    "Permission denied, pick a process owned by this user"
+                )),
+                _ => Err(anyhow!(x)),
+            }
         }
     };
 
@@ -176,11 +203,14 @@ fn pick_offset(settings: Settings) -> Result<usize> {
 
     use regex::Regex;
 
-    let re = Regex::new("^([[:xdigit:]]+)-([[:xdigit:]]+) (.{4})").expect("Memory-map matching regular expression should compile");
+    let re = Regex::new("^([[:xdigit:]]+)-([[:xdigit:]]+) (.{4})")
+        .expect("Memory-map matching regular expression should compile");
 
     for line in lines {
         if let Ok(line) = line {
-            let cap = re.captures(&line).expect("Incompatible layout of /proc/pid/maps");
+            let cap = re
+                .captures(&line)
+                .expect("Incompatible layout of /proc/pid/maps");
             if let Some(perms) = cap.get(3) {
                 let start = cap.get(1).unwrap();
                 let end = cap.get(2).unwrap();
@@ -189,8 +219,14 @@ fn pick_offset(settings: Settings) -> Result<usize> {
                 let start = usize::from_str_radix(start.as_str(), 16)?;
                 let end = usize::from_str_radix(end.as_str(), 16)?;
                 if perms == "rw-p" {
-                    println!("{:0size$x}-{:0size$x} {}", start, end, perms, size= ADDR_BYTES * 2);
-                    return Ok(start)
+                    println!(
+                        "{:0size$x}-{:0size$x} {}",
+                        start,
+                        end,
+                        perms,
+                        size = ADDR_BYTES * 2
+                    );
+                    return Ok(start);
                 }
             }
         }
@@ -222,7 +258,9 @@ fn ar_easy() {
 
 #[test]
 fn ar_letters() {
-    let row: [u8; LINE_SIZE] = [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79];
+    let row: [u8; LINE_SIZE] = [
+        64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
+    ];
 
     use std::io;
     let result = ascii_row(io::sink(), 0x12345678, &row);
@@ -243,7 +281,6 @@ fn ah_zero() {
 #[test]
 fn ah_ascending() {
     let mut page: [u8; PAGE_SIZE] = [0; PAGE_SIZE];
-
 
     for n in 0..PAGE_SIZE {
         page[n] = n as u8;
@@ -309,11 +346,14 @@ fn afh_fives() {
     assert_eq!(inner, Some(0x55555555));
 }
 
-
 #[test]
 fn rai_empty() {
     let name = "Unknown".to_string();
-    let empty = Settings { name, pid: None, addr: None };
+    let empty = Settings {
+        name,
+        pid: None,
+        addr: None,
+    };
     let nothing: Vec<OsString> = Vec::new();
 
     let result = read_args_internal(nothing.iter().cloned()).unwrap();
@@ -324,7 +364,11 @@ fn rai_empty() {
 #[test]
 fn rai_example1() {
     let name = "program_name".to_string();
-    let expected = Settings { name, pid: Some(1234), addr: None };
+    let expected = Settings {
+        name,
+        pid: Some(1234),
+        addr: None,
+    };
     let mut example: Vec<OsString> = Vec::new();
 
     example.push(OsString::from("program_name"));
@@ -338,7 +382,11 @@ fn rai_example1() {
 #[test]
 fn rai_example2() {
     let name = "program_name".to_string();
-    let expected = Settings { name, pid: Some(5678), addr: Some(0xdeadbeef) };
+    let expected = Settings {
+        name,
+        pid: Some(5678),
+        addr: Some(0xdeadbeef),
+    };
     let mut example: Vec<OsString> = Vec::new();
 
     example.push(OsString::from("program_name"));

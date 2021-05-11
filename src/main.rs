@@ -1,6 +1,6 @@
-use std::process;
-use leakdice_rust::read_args;
 use leakdice_rust::doit;
+use leakdice_rust::read_args;
+use std::process;
 
 fn main() {
     let settings = read_args().unwrap_or_else(|err| {
@@ -9,7 +9,10 @@ fn main() {
     });
 
     if settings.pid == None {
-        eprintln!("{} <pid> [addr] dump some heap pages from a process to diagnose leaks", settings.name);
+        eprintln!(
+            "{} <pid> [addr] dump some heap pages from a process to diagnose leaks",
+            settings.name
+        );
         process::exit(0);
     };
 
@@ -18,4 +21,3 @@ fn main() {
         _ => (),
     }
 }
-
