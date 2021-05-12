@@ -207,10 +207,17 @@ fn pick_offset_from_map<L>(lines: L) -> Result<usize>
 where
     L: Iterator<Item = std::io::Result<String>>,
 {
+    let perms = MemoryPermissions {
+        read: true,
+        write: true,
+        execute: false,
+        shared: false,
+    };
+
     let mem = memory_map(lines)?;
     let pages: usize = mem
         .iter()
-        .filter(|m| m.perms == "rw-p")
+        .filter(|m| m.perms == perms)
         .map(|m| m.pages)
         .sum();
     if pages == 0 {
@@ -222,7 +229,7 @@ where
     let mut rng = thread_rng();
     let mut page: usize = rng.gen_range(0..=pages) - 1;
 
-    let heap = mem.iter().filter(|m| m.perms == "rw-p");
+    let heap = mem.iter().filter(|m| m.perms == perms);
 
     for range in heap {
         if range.pages <= page {
@@ -232,27 +239,66 @@ where
         }
     }
 
-    panic!("Somehow there were fewer pages that we calculated!");
+    panic!("Somehow there were fewer pages than we earlier calculated!");
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Memory {
+struct MemoryPermissions {
+    pub read: bool,
+    pub write: bool,
+    pub execute: bool,
+    pub shared: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Memory {
     pub start: usize,
     pub pages: usize,
-    pub perms: String,
+    pub perms: MemoryPermissions,
+    pub offset: usize,
 }
 
 impl Memory {
-    fn new(start: usize, end: usize, perms: &str) -> Memory {
-        let perms = String::from(perms);
+    fn new(start: usize, end: usize, r: char, w: char, x: char, p: char, offset: usize) -> Memory {
+        let read = match r {
+            'r' => true,
+            _ => false,
+        };
+        let write = match w {
+            'w' => true,
+            _ => false,
+        };
+        let execute = match x {
+            'x' => true,
+            _ => false,
+        };
+        let shared = match p {
+            's' => true,
+            _ => false,
+        };
+
+        let perms = MemoryPermissions {
+            read,
+            write,
+            execute,
+            shared,
+        };
         let pages = (end - start) / PAGE_SIZE;
 
         Memory {
             start,
             pages,
             perms,
+            offset,
         }
     }
+}
+
+fn match_to_one_char(m: regex::Match) -> char {
+    m.as_str()
+        .chars()
+        .next()
+        .expect("Match was unexpectedly empty")
 }
 
 fn memory_map<L>(lines: L) -> Result<Vec<Memory>>
@@ -260,7 +306,7 @@ where
     L: Iterator<Item = std::io::Result<String>>,
 {
     use regex::Regex;
-    let re = Regex::new("^([[:xdigit:]]+)-([[:xdigit:]]+) (.{4})")
+    let re = Regex::new("^([[:xdigit:]]+)-([[:xdigit:]]+) (.)(.)(.)(.) ([[:xdigit:]]+)")
         .expect("Memory-map matching regular expression should compile");
 
     let mut vec = Vec::new();
@@ -270,14 +316,18 @@ where
             let cap = re
                 .captures(&line)
                 .expect("Incompatible layout of /proc/pid/maps");
-            if let Some(perms) = cap.get(3) {
+            if let Some(offset) = cap.get(7) {
                 let start = cap.get(1).unwrap();
                 let end = cap.get(2).unwrap();
+                let r = match_to_one_char(cap.get(3).unwrap());
+                let w = match_to_one_char(cap.get(4).unwrap());
+                let x = match_to_one_char(cap.get(5).unwrap());
+                let p = match_to_one_char(cap.get(6).unwrap());
 
-                let perms = perms.as_str();
                 let start = usize::from_str_radix(start.as_str(), 16)?;
                 let end = usize::from_str_radix(end.as_str(), 16)?;
-                vec.push(Memory::new(start, end, perms));
+                let offset = usize::from_str_radix(offset.as_str(), 16)?;
+                vec.push(Memory::new(start, end, r, w, x, p, offset));
             }
         } else {
             return Err(anyhow!("Trouble reading /proc/pid/maps"));
