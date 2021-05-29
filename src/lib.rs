@@ -1,5 +1,7 @@
 use std::env;
 use std::ffi::OsString;
+use std::num::NonZeroU32;
+use std::num::NonZeroUsize;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -7,8 +9,8 @@ use anyhow::Result;
 #[derive(Debug, PartialEq, Eq)]
 pub struct Settings {
     pub name: String,
-    pub pid: Option<i32>,
-    pub addr: Option<usize>,
+    pub pid: Option<NonZeroU32>,
+    pub addr: Option<NonZeroUsize>,
 }
 
 pub fn read_args() -> Result<Settings> {
@@ -31,10 +33,10 @@ where
     Ok(Settings { name, pid, addr })
 }
 
-fn pid_from_dec(s: Option<OsString>) -> Result<Option<i32>> {
+fn pid_from_dec(s: Option<OsString>) -> Result<Option<NonZeroU32>> {
     let arg = match s {
-        None => return Ok(None),
         Some(s) => s,
+        None => return Ok(None),
     };
 
     let z = arg.into_string();
@@ -44,13 +46,14 @@ fn pid_from_dec(s: Option<OsString>) -> Result<Option<i32>> {
         Err(_) => return Err(anyhow!("Ugh")),
     };
 
-    match arg.parse::<i32>() {
-        Ok(num) => Ok(Some(num)),
+    match arg.parse::<u32>() {
+        Ok(0) => Err(anyhow!("Blergh")),
+        Ok(num) => Ok(NonZeroU32::new(num)),
         Err(_) => Err(anyhow!("Ppfffffft")),
     }
 }
 
-fn addr_from_hex(s: Option<OsString>) -> Result<Option<usize>> {
+fn addr_from_hex(s: Option<OsString>) -> Result<Option<NonZeroUsize>> {
     let arg = match s {
         None => return Ok(None),
         Some(s) => s,
@@ -64,7 +67,8 @@ fn addr_from_hex(s: Option<OsString>) -> Result<Option<usize>> {
     };
 
     match usize::from_str_radix(&arg, 16) {
-        Ok(num) => Ok(Some(num)),
+        Ok(0) => Err(anyhow!("Blergh")),
+        Ok(num) => Ok(NonZeroUsize::new(num)),
         Err(_) => Err(anyhow!("Fffft")),
     }
 }
@@ -80,7 +84,7 @@ pub fn doit(settings: Settings) -> Result<()> {
         .expect("Shouldn't call this without setting pid");
 
     let addr = match settings.addr {
-        Some(addr) => addr,
+        Some(addr) => addr.get(),
         None => pick_offset(settings)?,
     };
 
@@ -418,7 +422,7 @@ fn pfd_five() {
     let result = pid_from_dec(five);
     let inner = result.expect("unable to parse five");
 
-    assert_eq!(inner, Some(5));
+    assert_eq!(inner, NonZeroU32::new(5));
 }
 
 #[test]
@@ -445,7 +449,7 @@ fn afh_fives() {
     let result = addr_from_hex(fives);
     let inner = result.expect("unable to parse fives");
 
-    assert_eq!(inner, Some(0x55555555));
+    assert_eq!(inner, NonZeroUsize::new(0x55555555));
 }
 
 #[test]
@@ -468,7 +472,7 @@ fn rai_example1() {
     let name = "program_name".to_string();
     let expected = Settings {
         name,
-        pid: Some(1234),
+        pid: NonZeroU32::new(1234),
         addr: None,
     };
     let mut example: Vec<OsString> = Vec::new();
@@ -486,8 +490,8 @@ fn rai_example2() {
     let name = "program_name".to_string();
     let expected = Settings {
         name,
-        pid: Some(5678),
-        addr: Some(0xdeadbeef),
+        pid: NonZeroU32::new(5678),
+        addr: NonZeroUsize::new(0xdeadbeef),
     };
     let mut example: Vec<OsString> = Vec::new();
 
