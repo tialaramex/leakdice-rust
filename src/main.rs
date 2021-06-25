@@ -1,3 +1,5 @@
+#![warn(rust_2018_idioms)]
+
 /*  leakdice - Monte Carlo sampling of heap data
 
     Copyright (C) 2009-21 Nick Lamb
@@ -17,12 +19,7 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-/* This is useful when for some reason a methodical approach to identifying memory leaks isn't available
- * e.g. because the process is already running and it's too late to instrument it
- * it's inspired in part by Raymond Chen's blog article "The poor man's way of identifying memory leaks" */
-
-
-use leakdice_rust::doit;
+use leakdice_rust::execute;
 use leakdice_rust::read_args;
 use std::process;
 
@@ -40,7 +37,7 @@ fn main() {
         process::exit(0);
     };
 
-    match doit(settings) {
+    match execute(settings) {
         Err(x) => eprintln!("Trouble: {}", x),
         _ => (),
     }

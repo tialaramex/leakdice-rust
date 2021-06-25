@@ -1,3 +1,9 @@
+#![warn(rust_2018_idioms)]
+
+//! leakdice is useful when for some reason a methodical approach to identifying memory leaks isn't available
+//! e.g. because the process is already running and it's too late to instrument it.
+//! leakdice was inspired in part by Raymond Chen's blog article "The poor man's way of identifying memory leaks"
+
 use std::env;
 use std::ffi::OsString;
 use std::num::NonZeroU32;
@@ -78,7 +84,7 @@ use std::io::ErrorKind;
 
 const PAGE_SIZE: usize = 4096;
 
-pub fn doit(settings: Settings) -> Result<()> {
+pub fn execute(settings: Settings) -> Result<()> {
     let pid = settings
         .pid
         .expect("Shouldn't call this without setting pid");
@@ -298,7 +304,7 @@ impl Memory {
     }
 }
 
-fn match_to_one_char(m: regex::Match) -> char {
+fn match_to_one_char(m: regex::Match<'_>) -> char {
     m.as_str()
         .chars()
         .next()
