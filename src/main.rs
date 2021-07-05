@@ -19,26 +19,20 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
+use anyhow::Result;
 use leakdice_rust::execute;
 use leakdice_rust::read_args;
-use std::process;
 
-fn main() {
-    let settings = read_args().unwrap_or_else(|err| {
-        eprintln!("Trouble parsing the arguments: {}", err);
-        process::exit(1);
-    });
+fn main() -> Result<()> {
+    let settings = read_args()?;
 
     if settings.pid == None {
         eprintln!(
             "{} <pid> [addr] dump some heap pages from a process to diagnose leaks",
             settings.name
         );
-        process::exit(0);
+        return Ok(());
     };
 
-    match execute(settings) {
-        Err(x) => eprintln!("Trouble: {}", x),
-        _ => (),
-    }
+    execute(settings)
 }
