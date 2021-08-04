@@ -237,7 +237,7 @@ where
     use rand::{thread_rng, Rng};
 
     let mut rng = thread_rng();
-    let mut page: usize = rng.gen_range(0..=pages) - 1;
+    let mut page: usize = rng.gen_range(0..pages);
 
     let heap = mem.iter().filter(|m| m.perms == perms);
 
