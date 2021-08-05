@@ -6,8 +6,7 @@
 
 use std::env;
 use std::ffi::OsString;
-use std::num::NonZeroU32;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32,NonZeroUsize};
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -84,6 +83,12 @@ use std::io::ErrorKind;
 
 const PAGE_SIZE: usize = 4096;
 
+pub struct Output {
+    pub tty: Box<dyn std::io::Write>,
+    pub addr_width: usize,
+    pub spaces: bool,
+}
+
 pub fn execute(settings: Settings) -> Result<()> {
     let pid = settings
         .pid
@@ -137,29 +142,45 @@ pub fn execute(settings: Settings) -> Result<()> {
         ));
     }
 
-    use std::io;
-    ascii_hex(io::stdout(), addr, &buffer)
+    let stdout = std::io::stdout();
+    let (addr_width, spaces) = row_diet(addr);
+    let output = Output { tty: Box::new(stdout), addr_width, spaces };
+    ascii_hex(output, addr, &buffer)
 }
 
 const ADDR_BYTES: usize = std::mem::size_of::<usize>();
 const LINE_SIZE: usize = 16;
 
-fn ascii_hex<W>(mut out: W, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<()>
-where
-    W: std::io::Write,
-{
-    use std::borrow::BorrowMut;
+fn row_diet(addr: usize) -> (usize, bool) {
+    use terminal_size::{Width, terminal_size};
+    let size = terminal_size();
+    let zeros = (ADDR_BYTES * 2) - (addr.leading_zeros() as usize / 4);
 
+    if let Some((Width(w), _)) = size {
+        if w as usize >= (ADDR_BYTES * 2) + (LINE_SIZE * 4) + 2 {
+            return (ADDR_BYTES * 2, true)
+        } else if w as usize >= zeros + (LINE_SIZE * 4) + 2 {
+            return (zeros, true)
+        } else if w as usize >= (ADDR_BYTES * 2) + (LINE_SIZE * 3) + 2 {
+            return (ADDR_BYTES * 2, false)
+        } else {
+            return (zeros, false)
+        }
+    }
+    (ADDR_BYTES * 2, true)
+}
+
+fn ascii_hex(mut out: Output, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<()> {
     let mut old_slice = &buffer[..0];
     let mut repeat = false;
     for line in 0..(PAGE_SIZE / LINE_SIZE) {
         let offset = line * LINE_SIZE;
         let slice = &buffer[offset..(offset + LINE_SIZE)];
         if slice != old_slice {
-            ascii_row(out.borrow_mut(), addr + offset, slice)?;
+            ascii_row(&mut out, addr + offset, slice)?;
             repeat = false;
         } else if !repeat {
-            write!(out, " ...\n")?;
+            write!(*out.tty, " ...\n")?;
             repeat = true;
         }
         old_slice = slice;
@@ -167,22 +188,26 @@ where
     Ok(())
 }
 
-fn ascii_row<W>(mut out: W, addr: usize, buffer: &[u8]) -> Result<()>
-where
-    W: std::io::Write,
-{
-    write!(out, "{addr:0size$x} ", size = ADDR_BYTES * 2, addr = addr)?;
+fn ascii_row(out: &mut Output, addr: usize, buffer: &[u8]) -> Result<()> {
+    write!(*out.tty, "{addr:0size$x} ", size = out.addr_width, addr = addr)?;
     for byte in buffer {
         if *byte > 31 && *byte < 127 {
-            write!(out, "{}", (*byte as char))?;
+            write!(*out.tty, "{}", (*byte as char))?;
         } else {
-            write!(out, ".")?;
+            write!(*out.tty, ".")?;
         }
     }
-    for byte in buffer {
-        write!(out, " {:02x}", byte)?;
+    if out.spaces {
+        for byte in buffer {
+            write!(*out.tty, " {:02x}", byte)?;
+        }
+    } else {
+        write!(*out.tty, " ")?;
+        for byte in buffer {
+            write!(*out.tty, "{:02x}", byte)?;
+        }
     }
-    write!(out, "\n")?;
+    write!(*out.tty, "\n")?;
 
     Ok(())
 }

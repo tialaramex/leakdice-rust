@@ -10,6 +10,7 @@ edition = "2018"
 anyhow = "1.0"
 regex = "1.5"
 rand = "0.8"
+terminal_size = "0.1"
 
 [profile.release]
 opt-level = 'z' # Small not fast
