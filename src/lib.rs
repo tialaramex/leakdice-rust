@@ -6,7 +6,7 @@
 
 use std::env;
 use std::ffi::OsString;
-use std::num::{NonZeroU32,NonZeroUsize};
+use std::num::{NonZeroU32, NonZeroUsize};
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -144,7 +144,11 @@ pub fn execute(settings: Settings) -> Result<()> {
 
     let stdout = std::io::stdout();
     let (addr_width, spaces) = row_diet(addr);
-    let output = Output { tty: Box::new(stdout), addr_width, spaces };
+    let output = Output {
+        tty: Box::new(stdout),
+        addr_width,
+        spaces,
+    };
     ascii_hex(output, addr, &buffer)
 }
 
@@ -152,19 +156,19 @@ const ADDR_BYTES: usize = std::mem::size_of::<usize>();
 const LINE_SIZE: usize = 16;
 
 fn row_diet(addr: usize) -> (usize, bool) {
-    use terminal_size::{Width, terminal_size};
+    use terminal_size::{terminal_size, Width};
     let size = terminal_size();
     let zeros = (ADDR_BYTES * 2) - (addr.leading_zeros() as usize / 4);
 
     if let Some((Width(w), _)) = size {
         if w as usize >= (ADDR_BYTES * 2) + (LINE_SIZE * 4) + 2 {
-            return (ADDR_BYTES * 2, true)
+            return (ADDR_BYTES * 2, true);
         } else if w as usize >= zeros + (LINE_SIZE * 4) + 2 {
-            return (zeros, true)
+            return (zeros, true);
         } else if w as usize >= (ADDR_BYTES * 2) + (LINE_SIZE * 3) + 2 {
-            return (ADDR_BYTES * 2, false)
+            return (ADDR_BYTES * 2, false);
         } else {
-            return (zeros, false)
+            return (zeros, false);
         }
     }
     (ADDR_BYTES * 2, true)
@@ -189,7 +193,12 @@ fn ascii_hex(mut out: Output, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<(
 }
 
 fn ascii_row(out: &mut Output, addr: usize, buffer: &[u8]) -> Result<()> {
-    write!(*out.tty, "{addr:0size$x} ", size = out.addr_width, addr = addr)?;
+    write!(
+        *out.tty,
+        "{addr:0size$x} ",
+        size = out.addr_width,
+        addr = addr
+    )?;
     for byte in buffer {
         if *byte > 31 && *byte < 127 {
             write!(*out.tty, "{}", (*byte as char))?;
