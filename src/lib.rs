@@ -382,12 +382,21 @@ where
 }
 
 #[cfg(test)]
+fn fake_output(writer: impl std::io::Write + 'static, addr_width: usize, spaces: bool) -> Output {
+    Output {
+        tty: Box::new(writer),
+        addr_width,
+        spaces,
+    }
+}
+
 #[test]
 fn ar_zero() {
     let row: [u8; LINE_SIZE] = [0; LINE_SIZE];
 
     use std::io;
-    let result = ascii_row(io::sink(), 0x12345678, &row);
+    let mut out = fake_output(io::sink(), 100, true);
+    let result = ascii_row(&mut out, 0x12345678, &row);
 
     assert!(result.is_ok());
 }
@@ -397,7 +406,8 @@ fn ar_easy() {
     let row: [u8; LINE_SIZE] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
     use std::io;
-    let result = ascii_row(io::sink(), 0x12345678, &row);
+    let mut out = fake_output(io::sink(), 100, true);
+    let result = ascii_row(&mut out, 0x12345678, &row);
 
     assert!(result.is_ok());
 }
@@ -409,7 +419,8 @@ fn ar_letters() {
     ];
 
     use std::io;
-    let result = ascii_row(io::sink(), 0x12345678, &row);
+    let mut out = fake_output(io::sink(), 100, true);
+    let result = ascii_row(&mut out, 0x12345678, &row);
 
     assert!(result.is_ok());
 }
@@ -419,7 +430,8 @@ fn ah_zero() {
     let page: [u8; PAGE_SIZE] = [0; PAGE_SIZE];
 
     use std::io;
-    let result = ascii_hex(io::sink(), 0x12345678, &page);
+    let out = fake_output(io::sink(), 100, true);
+    let result = ascii_hex(out, 0x12345678, &page);
 
     assert!(result.is_ok());
 }
@@ -433,7 +445,8 @@ fn ah_ascending() {
     }
 
     use std::io;
-    let result = ascii_hex(io::sink(), 0x12345678, &page);
+    let out = fake_output(io::sink(), 100, true);
+    let result = ascii_hex(out, 0x12345678, &page);
 
     assert!(result.is_ok());
 }
