@@ -142,11 +142,7 @@ pub fn execute(settings: Settings) -> Result<()> {
 
     let stdout = std::io::stdout();
     let (addr_width, spaces) = row_diet(addr);
-    let output = Output {
-        tty: Box::new(stdout),
-        addr_width,
-        spaces,
-    };
+    let output = Output::new(stdout, addr_width, spaces);
     ascii_hex(output, addr, &buffer)
 }
 

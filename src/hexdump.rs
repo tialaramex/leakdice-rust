@@ -2,10 +2,20 @@ use anyhow::Result;
 
 pub const PAGE_SIZE: usize = 4096;
 
-pub struct Output {
-    pub tty: Box<dyn std::io::Write>,
+pub struct Output<'t> {
+    pub tty: Box<dyn std::io::Write + 't>,
     pub addr_width: usize,
     pub spaces: bool,
+}
+
+impl<'t> Output<'t> {
+    pub fn new(writer: impl std::io::Write + 't, addr_width: usize, spaces: bool) -> Output<'t> {
+        Output {
+            tty: Box::new(writer),
+            addr_width,
+            spaces,
+        }
+    }
 }
 
 const ADDR_BYTES: usize = std::mem::size_of::<usize>();
@@ -30,7 +40,7 @@ pub fn row_diet(addr: usize) -> (usize, bool) {
     (ADDR_BYTES * 2, true)
 }
 
-pub fn ascii_hex(mut out: Output, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<()> {
+pub fn ascii_hex(mut out: Output<'_>, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<()> {
     let mut old_slice = &buffer[..0];
     let mut repeat = false;
     for line in 0..(PAGE_SIZE / LINE_SIZE) {
@@ -48,7 +58,7 @@ pub fn ascii_hex(mut out: Output, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Resu
     Ok(())
 }
 
-fn ascii_row(out: &mut Output, addr: usize, buffer: &[u8]) -> Result<()> {
+fn ascii_row(out: &mut Output<'_>, addr: usize, buffer: &[u8]) -> Result<()> {
     write!(
         *out.tty,
         "{addr:0size$x} ",
@@ -78,34 +88,34 @@ fn ascii_row(out: &mut Output, addr: usize, buffer: &[u8]) -> Result<()> {
 }
 
 #[cfg(test)]
-fn fake_output(writer: impl std::io::Write + 'static, addr_width: usize, spaces: bool) -> Output {
-    Output {
-        tty: Box::new(writer),
-        addr_width,
-        spaces,
-    }
-}
-
 #[test]
 fn ar_zero() {
     let row: [u8; LINE_SIZE] = [0; LINE_SIZE];
+    let mut bytes: Vec<u8> = Vec::new();
 
-    use std::io;
-    let mut out = fake_output(io::sink(), 100, true);
-    let result = ascii_row(&mut out, 0x12345678, &row);
-
-    assert!(result.is_ok());
+    {
+        let mut out = Output::new(&mut bytes, 16, true);
+        let result = ascii_row(&mut out, 0x12345678, &row);
+        assert!(result.is_ok());
+    }
+    let ideal = "0000000012345678 ................ 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n";
+    let text = String::from_utf8(bytes).unwrap();
+    assert_eq!(text, ideal);
 }
 
 #[test]
 fn ar_easy() {
     let row: [u8; LINE_SIZE] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    let mut bytes: Vec<u8> = Vec::new();
 
-    use std::io;
-    let mut out = fake_output(io::sink(), 100, true);
-    let result = ascii_row(&mut out, 0x12345678, &row);
-
-    assert!(result.is_ok());
+    {
+        let mut out = Output::new(&mut bytes, 16, false);
+        let result = ascii_row(&mut out, 0x12345678, &row);
+        assert!(result.is_ok());
+    }
+    let ideal = "0000000012345678 ................ 000102030405060708090a0b0c0d0e0f\n";
+    let text = String::from_utf8(bytes).unwrap();
+    assert_eq!(text, ideal);
 }
 
 #[test]
@@ -113,23 +123,31 @@ fn ar_letters() {
     let row: [u8; LINE_SIZE] = [
         64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
     ];
+    let mut bytes: Vec<u8> = Vec::new();
 
-    use std::io;
-    let mut out = fake_output(io::sink(), 100, true);
-    let result = ascii_row(&mut out, 0x12345678, &row);
-
-    assert!(result.is_ok());
+    {
+        let mut out = Output::new(&mut bytes, 12, true);
+        let result = ascii_row(&mut out, 0x12345678, &row);
+        assert!(result.is_ok());
+    }
+    let ideal = "000012345678 @ABCDEFGHIJKLMNO 40 41 42 43 44 45 46 47 48 49 4a 4b 4c 4d 4e 4f\n";
+    let text = String::from_utf8(bytes).unwrap();
+    assert_eq!(text, ideal);
 }
 
 #[test]
 fn ah_zero() {
     let page: [u8; PAGE_SIZE] = [0; PAGE_SIZE];
+    let mut bytes: Vec<u8> = Vec::new();
 
-    use std::io;
-    let out = fake_output(io::sink(), 100, true);
-    let result = ascii_hex(out, 0x12345678, &page);
-
-    assert!(result.is_ok());
+    {
+        let out = Output::new(&mut bytes, 12, true);
+        let result = ascii_hex(out, 0x9876543210, &page);
+        assert!(result.is_ok());
+    }
+    let ideal = "009876543210 ................ 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n ...\n";
+    let text = String::from_utf8(bytes).unwrap();
+    assert_eq!(text, ideal);
 }
 
 #[test]
@@ -139,10 +157,13 @@ fn ah_ascending() {
     for n in 0..PAGE_SIZE {
         page[n] = n as u8;
     }
+    let mut bytes: Vec<u8> = Vec::new();
 
-    use std::io;
-    let out = fake_output(io::sink(), 100, true);
-    let result = ascii_hex(out, 0x12345678, &page);
-
-    assert!(result.is_ok());
+    {
+        let out = Output::new(&mut bytes, 12, true);
+        let result = ascii_hex(out, 0x12345678, &page);
+        assert!(result.is_ok());
+    }
+    let text = String::from_utf8(bytes).unwrap();
+    assert_eq!(text.len(), 19968);
 }
