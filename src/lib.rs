@@ -22,6 +22,65 @@ pub fn read_args() -> Result<Settings> {
     read_args_internal(env::args_os())
 }
 
+pub fn execute(settings: Settings) -> Result<()> {
+    let pid = settings
+        .pid
+        .expect("Shouldn't call this without setting pid");
+
+    let addr = match settings.addr {
+        Some(addr) => addr.get(),
+        None => pick_offset(settings)?,
+    };
+
+    /* Fix up addr to align one page */
+    let addr = addr & (usize::MAX - (PAGE_SIZE - 1));
+
+    let procfile = format!("/proc/{}/mem", pid);
+
+    let mut fd: std::fs::File = match OpenOptions::new().read(true).open(&procfile) {
+        Ok(fd) => fd,
+        Err(x) => {
+            return match x.kind() {
+                ErrorKind::NotFound => Err(anyhow!(
+                    "Non-existent process, pick a process which actually exists"
+                )),
+                ErrorKind::PermissionDenied => Err(anyhow!(
+                    "Permission denied, pick a process owned by this user"
+                )),
+                _ => Err(anyhow!(x)),
+            }
+        }
+    };
+
+    use std::convert::TryInto;
+    let offset: u64 = addr.try_into().unwrap();
+    use std::io::Seek;
+    let pos = fd.seek(std::io::SeekFrom::Start(offset))?;
+    if pos != offset {
+        return Err(anyhow!(
+            "Somehow unable to seek to {:08x} in {}",
+            offset,
+            procfile
+        ));
+    }
+
+    let mut buffer = [0; PAGE_SIZE];
+    use std::io::Read;
+    let read = fd.read(&mut buffer[..])?;
+    if read != PAGE_SIZE {
+        return Err(anyhow!(
+            "Somehow only able to read {} bytes from {}",
+            read,
+            procfile
+        ));
+    }
+
+    let stdout = std::io::stdout();
+    let (addr_width, spaces) = row_diet(addr);
+    let output = Output::new(stdout, addr_width, spaces);
+    ascii_page(output, addr, &buffer)
+}
+
 fn read_args_internal<A>(mut args: A) -> Result<Settings>
 where
     A: Iterator<Item = OsString>,
@@ -108,65 +167,6 @@ fn row_diet(addr: usize) -> (usize, bool) {
     (ADDR_BYTES * 2, true)
 }
 
-pub fn execute(settings: Settings) -> Result<()> {
-    let pid = settings
-        .pid
-        .expect("Shouldn't call this without setting pid");
-
-    let addr = match settings.addr {
-        Some(addr) => addr.get(),
-        None => pick_offset(settings)?,
-    };
-
-    /* Fix up addr to align one page */
-    let addr = addr & (usize::MAX - (PAGE_SIZE - 1));
-
-    let procfile = format!("/proc/{}/mem", pid);
-
-    let mut fd: std::fs::File = match OpenOptions::new().read(true).open(&procfile) {
-        Ok(fd) => fd,
-        Err(x) => {
-            return match x.kind() {
-                ErrorKind::NotFound => Err(anyhow!(
-                    "Non-existent process, pick a process which actually exists"
-                )),
-                ErrorKind::PermissionDenied => Err(anyhow!(
-                    "Permission denied, pick a process owned by this user"
-                )),
-                _ => Err(anyhow!(x)),
-            }
-        }
-    };
-
-    use std::convert::TryInto;
-    let offset: u64 = addr.try_into().unwrap();
-    use std::io::Seek;
-    let pos = fd.seek(std::io::SeekFrom::Start(offset))?;
-    if pos != offset {
-        return Err(anyhow!(
-            "Somehow unable to seek to {:08x} in {}",
-            offset,
-            procfile
-        ));
-    }
-
-    let mut buffer = [0; PAGE_SIZE];
-    use std::io::Read;
-    let read = fd.read(&mut buffer[..])?;
-    if read != PAGE_SIZE {
-        return Err(anyhow!(
-            "Somehow only able to read {} bytes from {}",
-            read,
-            procfile
-        ));
-    }
-
-    let stdout = std::io::stdout();
-    let (addr_width, spaces) = row_diet(addr);
-    let output = Output::new(stdout, addr_width, spaces);
-    ascii_page(output, addr, &buffer)
-}
-
 fn pick_offset(settings: Settings) -> Result<usize> {
     let pid = settings
         .pid
@@ -192,6 +192,10 @@ fn pick_offset(settings: Settings) -> Result<usize> {
     use std::io::{self, BufRead};
     pick_offset_from_map(io::BufReader::new(fd).lines())
 }
+
+mod memory;
+use memory::memory_map;
+use memory::MemoryPermissions;
 
 fn pick_offset_from_map<L>(lines: L) -> Result<usize>
 where
@@ -230,101 +234,6 @@ where
     }
 
     panic!("Somehow there were fewer pages than we earlier calculated!");
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct MemoryPermissions {
-    pub read: bool,
-    pub write: bool,
-    pub execute: bool,
-    pub shared: bool,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct Memory {
-    pub start: usize,
-    pub pages: usize,
-    pub perms: MemoryPermissions,
-    pub offset: usize,
-}
-
-impl Memory {
-    fn new(start: usize, end: usize, r: char, w: char, x: char, p: char, offset: usize) -> Memory {
-        let read = match r {
-            'r' => true,
-            _ => false,
-        };
-        let write = match w {
-            'w' => true,
-            _ => false,
-        };
-        let execute = match x {
-            'x' => true,
-            _ => false,
-        };
-        let shared = match p {
-            's' => true,
-            _ => false,
-        };
-
-        let perms = MemoryPermissions {
-            read,
-            write,
-            execute,
-            shared,
-        };
-        let pages = (end - start) / PAGE_SIZE;
-
-        Memory {
-            start,
-            pages,
-            perms,
-            offset,
-        }
-    }
-}
-
-fn match_to_one_char(m: regex::Match<'_>) -> char {
-    m.as_str()
-        .chars()
-        .next()
-        .expect("Match was unexpectedly empty")
-}
-
-fn memory_map<L>(lines: L) -> Result<Vec<Memory>>
-where
-    L: Iterator<Item = std::io::Result<String>>,
-{
-    use regex::Regex;
-    let re = Regex::new("^([[:xdigit:]]+)-([[:xdigit:]]+) (.)(.)(.)(.) ([[:xdigit:]]+)")
-        .expect("Memory-map matching regular expression should compile");
-
-    let mut vec = Vec::new();
-
-    for line in lines {
-        if let Ok(line) = line {
-            let cap = re
-                .captures(&line)
-                .expect("Incompatible layout of /proc/pid/maps");
-            if let Some(offset) = cap.get(7) {
-                let start = cap.get(1).unwrap();
-                let end = cap.get(2).unwrap();
-                let r = match_to_one_char(cap.get(3).unwrap());
-                let w = match_to_one_char(cap.get(4).unwrap());
-                let x = match_to_one_char(cap.get(5).unwrap());
-                let p = match_to_one_char(cap.get(6).unwrap());
-
-                let start = usize::from_str_radix(start.as_str(), 16)?;
-                let end = usize::from_str_radix(end.as_str(), 16)?;
-                let offset = usize::from_str_radix(offset.as_str(), 16)?;
-                vec.push(Memory::new(start, end, r, w, x, p, offset));
-            }
-        } else {
-            return Err(anyhow!("Trouble reading /proc/pid/maps"));
-        }
-    }
-
-    Ok(vec)
 }
 
 #[cfg(test)]
