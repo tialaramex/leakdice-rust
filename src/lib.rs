@@ -82,8 +82,8 @@ use std::fs::OpenOptions;
 use std::io::ErrorKind;
 
 mod hexdump;
-use hexdump::row_diet;
 use hexdump::ascii_hex;
+use hexdump::row_diet;
 use hexdump::Output;
 use hexdump::PAGE_SIZE;
 

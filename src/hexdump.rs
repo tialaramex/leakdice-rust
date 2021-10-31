@@ -98,7 +98,8 @@ fn ar_zero() {
         let result = ascii_row(&mut out, 0x12345678, &row);
         assert!(result.is_ok());
     }
-    let ideal = "0000000012345678 ................ 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n";
+    let ideal =
+        "0000000012345678 ................ 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n";
     let text = String::from_utf8(bytes).unwrap();
     assert_eq!(text, ideal);
 }
@@ -145,7 +146,8 @@ fn ah_zero() {
         let result = ascii_hex(out, 0x9876543210, &page);
         assert!(result.is_ok());
     }
-    let ideal = "009876543210 ................ 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n ...\n";
+    let ideal =
+        "009876543210 ................ 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n ...\n";
     let text = String::from_utf8(bytes).unwrap();
     assert_eq!(text, ideal);
 }
