@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 pub const PAGE_SIZE: usize = 4096;
+pub const LINE_SIZE: usize = 16;
 
 pub struct Output<'t> {
     pub tty: Box<dyn std::io::Write + 't>,
@@ -18,29 +19,7 @@ impl<'t> Output<'t> {
     }
 }
 
-const ADDR_BYTES: usize = std::mem::size_of::<usize>();
-const LINE_SIZE: usize = 16;
-
-pub fn row_diet(addr: usize) -> (usize, bool) {
-    use terminal_size::{terminal_size, Width};
-    let size = terminal_size();
-    let zeros = (ADDR_BYTES * 2) - (addr.leading_zeros() as usize / 4);
-
-    if let Some((Width(w), _)) = size {
-        if w as usize >= (ADDR_BYTES * 2) + (LINE_SIZE * 4) + 2 {
-            return (ADDR_BYTES * 2, true);
-        } else if w as usize >= zeros + (LINE_SIZE * 4) + 2 {
-            return (zeros, true);
-        } else if w as usize >= (ADDR_BYTES * 2) + (LINE_SIZE * 3) + 2 {
-            return (ADDR_BYTES * 2, false);
-        } else {
-            return (zeros, false);
-        }
-    }
-    (ADDR_BYTES * 2, true)
-}
-
-pub fn ascii_hex(mut out: Output<'_>, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<()> {
+pub fn ascii_page(mut out: Output<'_>, addr: usize, buffer: &[u8; PAGE_SIZE]) -> Result<()> {
     let mut old_slice = &buffer[..0];
     let mut repeat = false;
     for line in 0..(PAGE_SIZE / LINE_SIZE) {
@@ -143,7 +122,7 @@ fn ah_zero() {
 
     {
         let out = Output::new(&mut bytes, 12, true);
-        let result = ascii_hex(out, 0x9876543210, &page);
+        let result = ascii_page(out, 0x9876543210, &page);
         assert!(result.is_ok());
     }
     let ideal =
@@ -163,7 +142,7 @@ fn ah_ascending() {
 
     {
         let out = Output::new(&mut bytes, 12, true);
-        let result = ascii_hex(out, 0x12345678, &page);
+        let result = ascii_page(out, 0x12345678, &page);
         assert!(result.is_ok());
     }
     let text = String::from_utf8(bytes).unwrap();

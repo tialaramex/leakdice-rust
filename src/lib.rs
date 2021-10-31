@@ -82,10 +82,31 @@ use std::fs::OpenOptions;
 use std::io::ErrorKind;
 
 mod hexdump;
-use hexdump::ascii_hex;
-use hexdump::row_diet;
+use hexdump::ascii_page;
 use hexdump::Output;
+use hexdump::LINE_SIZE;
 use hexdump::PAGE_SIZE;
+
+const ADDR_BYTES: usize = std::mem::size_of::<usize>();
+
+fn row_diet(addr: usize) -> (usize, bool) {
+    use terminal_size::{terminal_size, Width};
+    let size = terminal_size();
+    let zeros = (ADDR_BYTES * 2) - (addr.leading_zeros() as usize / 4);
+
+    if let Some((Width(w), _)) = size {
+        if w as usize >= (ADDR_BYTES * 2) + (LINE_SIZE * 4) + 2 {
+            return (ADDR_BYTES * 2, true);
+        } else if w as usize >= zeros + (LINE_SIZE * 4) + 2 {
+            return (zeros, true);
+        } else if w as usize >= (ADDR_BYTES * 2) + (LINE_SIZE * 3) + 2 {
+            return (ADDR_BYTES * 2, false);
+        } else {
+            return (zeros, false);
+        }
+    }
+    (ADDR_BYTES * 2, true)
+}
 
 pub fn execute(settings: Settings) -> Result<()> {
     let pid = settings
@@ -143,7 +164,7 @@ pub fn execute(settings: Settings) -> Result<()> {
     let stdout = std::io::stdout();
     let (addr_width, spaces) = row_diet(addr);
     let output = Output::new(stdout, addr_width, spaces);
-    ascii_hex(output, addr, &buffer)
+    ascii_page(output, addr, &buffer)
 }
 
 fn pick_offset(settings: Settings) -> Result<usize> {
