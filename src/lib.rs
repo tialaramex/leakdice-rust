@@ -75,9 +75,9 @@ pub fn execute(settings: Settings) -> Result<()> {
         ));
     }
 
-    let stdout = std::io::stdout();
+    let mut stdout = std::io::stdout();
     let (addr_width, spaces) = row_diet(addr);
-    let output = Output::new(stdout, addr_width, spaces);
+    let output = Output::new(&mut stdout, addr_width, spaces);
     ascii_page(output, addr, &buffer)
 }
 

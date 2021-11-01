@@ -3,16 +3,18 @@ use anyhow::Result;
 pub const PAGE_SIZE: usize = 4096;
 pub const LINE_SIZE: usize = 16;
 
+use std::io::Write;
+
 pub struct Output<'t> {
-    pub tty: Box<dyn std::io::Write + 't>,
+    pub tty: &'t mut dyn Write,
     pub addr_width: usize,
     pub spaces: bool,
 }
 
 impl<'t> Output<'t> {
-    pub fn new(writer: impl std::io::Write + 't, addr_width: usize, spaces: bool) -> Output<'t> {
+    pub fn new(writer: &'t mut impl Write, addr_width: usize, spaces: bool) -> Output<'t> {
         Output {
-            tty: Box::new(writer),
+            tty: writer,
             addr_width,
             spaces,
         }
