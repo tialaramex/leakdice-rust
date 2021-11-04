@@ -97,3 +97,55 @@ where
 
     Ok(vec)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn mtoc_z() {
+        let re = regex::Regex::new("(.)").unwrap();
+        let cap = re.captures("z").unwrap();
+
+        let z = match_to_one_char(cap.get(1).unwrap());
+
+        assert_eq!(z, 'z');
+    }
+
+    #[test]
+    fn construct() {
+        let _mem = Memory::new(0x01234000, 0x09876000, 'r', 'w', 'x', 'p', 0x0ffff000);
+    }
+
+    fn fake_file() -> Vec<std::io::Result<String>> {
+        let mut v = Vec::<std::io::Result<String>>::with_capacity(4);
+        let s1 = "12345000-13450000 rw-p 00000000 00:00 0".to_owned();
+        let s2 = "20100000-20200000 rw-p 00000000 00:00 0".to_owned();
+        let s3 = "34568000-45678000 rw-p 00000000 00:00 0".to_owned();
+        let s4 = "e0111000-e0222000 rw-p 00000000 00:00 0".to_owned();
+        v.push(Ok(s1));
+        v.push(Ok(s2));
+        v.push(Ok(s3));
+        v.push(Ok(s4));
+        v
+    }
+
+    #[test]
+    fn fake_maps() {
+        let lines = fake_file();
+        let mem = memory_map(lines.into_iter()).unwrap();
+
+        const RW_P: MemoryPermissions = MemoryPermissions {
+            read: true,
+            write: true,
+            execute: false,
+            shared: false,
+        };
+
+        assert_eq!(mem.len(), 4);
+        for m in mem {
+            assert_eq!(m.perms, RW_P);
+        }
+    }
+}

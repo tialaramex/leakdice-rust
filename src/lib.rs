@@ -237,108 +237,113 @@ where
 }
 
 #[cfg(test)]
-#[test]
-fn pfd_none() {
-    let result = pid_from_dec(None);
-    let inner = result.expect("tried to parse empty argument");
+mod tests {
 
-    assert_eq!(inner, None);
-}
+    use super::*;
 
-#[test]
-#[should_panic(expected = "Not a number")]
-fn pfd_space() {
-    let space = Some(OsString::from(" "));
+    #[test]
+    fn pfd_none() {
+        let result = pid_from_dec(None);
+        let inner = result.expect("tried to parse empty argument");
 
-    let result = pid_from_dec(space);
-    let _ = result.expect("Not a number");
-}
+        assert_eq!(inner, None);
+    }
 
-#[test]
-fn pfd_five() {
-    let five = Some(OsString::from("5"));
+    #[test]
+    #[should_panic(expected = "Not a number")]
+    fn pfd_space() {
+        let space = Some(OsString::from(" "));
 
-    let result = pid_from_dec(five);
-    let inner = result.expect("unable to parse five");
+        let result = pid_from_dec(space);
+        let _ = result.expect("Not a number");
+    }
 
-    assert_eq!(inner, NonZeroU32::new(5));
-}
+    #[test]
+    fn pfd_five() {
+        let five = Some(OsString::from("5"));
 
-#[test]
-fn afh_none() {
-    let result = addr_from_hex(None);
-    let inner = result.expect("tried to parse empty argument");
+        let result = pid_from_dec(five);
+        let inner = result.expect("unable to parse five");
 
-    assert_eq!(inner, None);
-}
+        assert_eq!(inner, NonZeroU32::new(5));
+    }
 
-#[test]
-#[should_panic(expected = "Not a number")]
-fn afh_space() {
-    let space = Some(OsString::from(" "));
+    #[test]
+    fn afh_none() {
+        let result = addr_from_hex(None);
+        let inner = result.expect("tried to parse empty argument");
 
-    let result = addr_from_hex(space);
-    let _ = result.expect("Not a number");
-}
+        assert_eq!(inner, None);
+    }
 
-#[test]
-fn afh_fives() {
-    let fives = Some(OsString::from("55555555"));
+    #[test]
+    #[should_panic(expected = "Not a number")]
+    fn afh_space() {
+        let space = Some(OsString::from(" "));
 
-    let result = addr_from_hex(fives);
-    let inner = result.expect("unable to parse fives");
+        let result = addr_from_hex(space);
+        let _ = result.expect("Not a number");
+    }
 
-    assert_eq!(inner, NonZeroUsize::new(0x55555555));
-}
+    #[test]
+    fn afh_fives() {
+        let fives = Some(OsString::from("55555555"));
 
-#[test]
-fn rai_empty() {
-    let name = "Unknown".to_string();
-    let empty = Settings {
-        name,
-        pid: None,
-        addr: None,
-    };
-    let nothing: Vec<OsString> = Vec::new();
+        let result = addr_from_hex(fives);
+        let inner = result.expect("unable to parse fives");
 
-    let result = read_args_internal(nothing.iter().cloned()).unwrap();
+        assert_eq!(inner, NonZeroUsize::new(0x55555555));
+    }
 
-    assert_eq!(result, empty);
-}
+    #[test]
+    fn rai_empty() {
+        let name = "Unknown".to_string();
+        let empty = Settings {
+            name,
+            pid: None,
+            addr: None,
+        };
+        let nothing: Vec<OsString> = Vec::new();
 
-#[test]
-fn rai_example1() {
-    let name = "program_name".to_string();
-    let expected = Settings {
-        name,
-        pid: NonZeroU32::new(1234),
-        addr: None,
-    };
-    let mut example: Vec<OsString> = Vec::new();
+        let result = read_args_internal(nothing.iter().cloned()).unwrap();
 
-    example.push(OsString::from("program_name"));
-    example.push(OsString::from("1234"));
+        assert_eq!(result, empty);
+    }
 
-    let result = read_args_internal(example.iter().cloned()).unwrap();
+    #[test]
+    fn rai_example1() {
+        let name = "program_name".to_string();
+        let expected = Settings {
+            name,
+            pid: NonZeroU32::new(1234),
+            addr: None,
+        };
+        let mut example: Vec<OsString> = Vec::new();
 
-    assert_eq!(result, expected);
-}
+        example.push(OsString::from("program_name"));
+        example.push(OsString::from("1234"));
 
-#[test]
-fn rai_example2() {
-    let name = "program_name".to_string();
-    let expected = Settings {
-        name,
-        pid: NonZeroU32::new(5678),
-        addr: NonZeroUsize::new(0xdeadbeef),
-    };
-    let mut example: Vec<OsString> = Vec::new();
+        let result = read_args_internal(example.iter().cloned()).unwrap();
 
-    example.push(OsString::from("program_name"));
-    example.push(OsString::from("5678"));
-    example.push(OsString::from("DEADBEEF"));
+        assert_eq!(result, expected);
+    }
 
-    let result = read_args_internal(example.iter().cloned()).unwrap();
+    #[test]
+    fn rai_example2() {
+        let name = "program_name".to_string();
+        let expected = Settings {
+            name,
+            pid: NonZeroU32::new(5678),
+            addr: NonZeroUsize::new(0xdeadbeef),
+        };
+        let mut example: Vec<OsString> = Vec::new();
 
-    assert_eq!(result, expected);
+        example.push(OsString::from("program_name"));
+        example.push(OsString::from("5678"));
+        example.push(OsString::from("DEADBEEF"));
+
+        let result = read_args_internal(example.iter().cloned()).unwrap();
+
+        assert_eq!(result, expected);
+    }
 }
