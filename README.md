@@ -11,7 +11,7 @@ Linux 2.x or better with proc filesystem
 leakdice is useful when for some reason a methodical approach to identifying memory leaks isn't available
 e.g. because the process is already running and it's too late to instrument it.
 leakdice was inspired in part by Raymond Chen's blog article
-[The poor man's way of identifying memory leaks](https://bytepointer.com/resources/old_new_thing/20050815_224_the_poor_mans_way_of_identifying_memory_leaks.htm)
+[The poor man's way of identifying memory leaks](https://devblogs.microsoft.com/oldnewthing/20050815-11/?p=34583)
 
 ## Concept
 
